@@ -66,7 +66,7 @@ type Config struct {
 // Build new logger
 func (c *Config) Build() (err error) {
 	if c.Level != "" {
-		SetLevelString(c.Level)
+		_ = SetLevelString(c.Level)
 	}
 
 	if c.File == nil {
@@ -289,6 +289,15 @@ func With(args ...interface{}) *Logger {
 	return &Logger{base: sugar.With(args...)}
 }
 
+// WithReflect return *Logger with reflect field
+// zap.Any will case fmt.Stringer type to string when the param is proto.Message
+// because of proto.Message implements String() method
+// it will cause the log field object to escaped string
+// so implements with field for proto.Message
+func WithReflect(key string, value any) *Logger {
+	return &Logger{base: sugar.With(zap.Reflect(key, value))}
+}
+
 // Logger wrap logger
 type Logger struct {
 	base *zap.SugaredLogger
@@ -297,6 +306,12 @@ type Logger struct {
 // With return *Logger with fields
 func (l *Logger) With(args ...interface{}) *Logger {
 	return &Logger{base: l.base.With(args...)}
+}
+
+// WithReflect return *Logger with reflect field
+// Detailed comments can be found in WithReflect()
+func (l *Logger) WithReflect(key string, value any) *Logger {
+	return &Logger{base: l.base.With(zap.Reflect(key, value))}
 }
 
 // Debug debug level message
