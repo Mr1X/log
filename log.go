@@ -14,6 +14,12 @@ var (
 	conf                 zap.Config
 	glevel               = zap.NewAtomicLevel() // global level
 	defaultEncoderConfig zapcore.EncoderConfig  // default EncoderConfig
+	defaultEncoding      = EncodingJSON
+)
+
+const (
+	EncodingJSON    = "json"
+	EncodingConsole = "console"
 )
 
 var (
@@ -61,12 +67,17 @@ type Config struct {
 	Level            string
 	File             *lumberjack.Logger
 	EnabledErrorFile bool // will create file-error if File is not nil
+	Encoding         string
 }
 
 // Build new logger
 func (c *Config) Build() (err error) {
 	if c.Level != "" {
 		_ = SetLevelString(c.Level)
+	}
+
+	if c.Encoding != "" {
+		defaultEncoding = c.Encoding
 	}
 
 	if c.File == nil {
@@ -80,11 +91,21 @@ func (c *Config) Build() (err error) {
 
 var DefaultLogFileCfg = &lumberjack.Logger{Filename: defaultLogName}
 
+func newEncoder() zapcore.Encoder {
+	switch defaultEncoding {
+	case EncodingConsole:
+		defaultEncoderConfig.EncodeLevel = zapcore.LowercaseColorLevelEncoder
+		return zapcore.NewConsoleEncoder(defaultEncoderConfig)
+	default:
+		return zapcore.NewJSONEncoder(defaultEncoderConfig)
+	}
+}
+
 // newLogger log to console
 func newLogger() (err error) {
 	writesyncer := zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout))
 
-	core := zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConfig), writesyncer, glevel)
+	core := zapcore.NewCore(newEncoder(), writesyncer, glevel)
 	logger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	sugar = logger.Sugar()
 	return nil
@@ -101,7 +122,7 @@ func newLoggerWithFile(filecfg *lumberjack.Logger) (err error) {
 	}
 
 	writesyncer := zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(filecfg))
-	core := zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConfig), writesyncer, glevel)
+	core := zapcore.NewCore(newEncoder(), writesyncer, glevel)
 	logger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	sugar = logger.Sugar()
 	return nil
@@ -126,7 +147,7 @@ func newLoggerWithErrorFile(filecfg *lumberjack.Logger) (err error) {
 // newCoreToConsole write to console
 func newCoreToConsole() zapcore.Core {
 	writesyncer := zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout))
-	return zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConfig), writesyncer, glevel)
+	return zapcore.NewCore(newEncoder(), writesyncer, glevel)
 }
 
 // newCoreToFile write to file
@@ -136,7 +157,7 @@ func newCoreToFile(filecfg *lumberjack.Logger) zapcore.Core {
 	}
 
 	writesyncer := zapcore.NewMultiWriteSyncer(zapcore.AddSync(filecfg))
-	return zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConfig), writesyncer, glevel)
+	return zapcore.NewCore(newEncoder(), writesyncer, glevel)
 
 }
 
@@ -156,7 +177,7 @@ func newCoreToFileErrorLevel(filecfg *lumberjack.Logger) zapcore.Core {
 		return lev >= zap.ErrorLevel
 	})
 
-	return zapcore.NewCore(zapcore.NewJSONEncoder(defaultEncoderConfig), writesyncer, highPriority)
+	return zapcore.NewCore(newEncoder(), writesyncer, highPriority)
 }
 
 // Level wrap internal/pkg/log Level
@@ -372,4 +393,9 @@ func (l *Logger) Panicf(template string, args ...interface{}) {
 // Fatalf fatal level message by template
 func (l *Logger) Fatalf(template string, args ...interface{}) {
 	l.base.Fatalf(template, args...)
+}
+
+func SetEncodingConsole() {
+	c := Config{Encoding: EncodingConsole}
+	c.Build()
 }
